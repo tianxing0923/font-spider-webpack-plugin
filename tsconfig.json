@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "baseUrl": ".",
     "target": "ES2015",
     "useDefineForClassFields": true,
     "lib": ["DOM", "DOM.Iterable", "ESNext"],
@@ -15,10 +16,11 @@
     "isolatedModules": true,
     "noEmit": true,
     "importHelpers": true,
-    "outDir": "build",
+    "outDir": "dist",
     "declaration": true,
     "declarationDir": "."
   },
-  "include": ["*.ts", "src/main.ts"],
-  "exclude": ["node_modules", "build"]
+  "include": ["src"],
+  "files": ["global.d.ts"],
+  "exclude": ["node_modules", "dist"]
 }

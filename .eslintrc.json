@@ -1,6 +1,6 @@
 {
   "extends": ["standard", "prettier"],
-  "ignorePatterns": ["node_modules", "build"],
+  "ignorePatterns": ["node_modules", "dist"],
   "parser": "@typescript-eslint/parser",
   "plugins": ["@typescript-eslint", "prettier"]
 }

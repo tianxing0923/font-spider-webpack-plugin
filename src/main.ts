@@ -6,7 +6,7 @@ import path from 'path'
 import fontSpider from 'font-spider'
 import chalk from 'chalk'
 import cheerio from 'cheerio'
-import { emptyDir, getFilename, writeTmp } from './utils'
+import { regxFace, regxFont, tmpPath, emptyDir, writeTmp, getFilename } from './utils'
 
 // 选项对象的 schema
 const schema: Schema = {
@@ -127,19 +127,13 @@ export interface FontSpiderWebpackPluginOptions {
 }
 
 /**
- * 字体文件正则
+ * 字蛛webpack插件
+ *
+ * @class FontSpiderWebpackPlugin
  */
-const regxFont = /\.(woff2|woff|eot|ttf|svg)$/i
-
-/**
- * @font-face正则
- */
-const regxFace = /@font-face[\s]*\{(.+?)\}/gi
-
 class FontSpiderWebpackPlugin {
   declare options: FontSpiderWebpackPluginOptions
   manifest = new Map()
-  manifest2 = new Map()
   constructor(options: FontSpiderWebpackPluginOptions = {}) {
     validate(schema, options, {
       name: 'FontSpiderWebpackPlugin',
@@ -150,9 +144,10 @@ class FontSpiderWebpackPlugin {
 
   apply(compiler: Compiler) {
     const pluginName = this.constructor.name
-    compiler.hooks.compilation.tap(pluginName, (compilation) => {
-      // Webpack 5
-      if (compilation.hooks.processAssets) {
+
+    // Webpack 5
+    if (compiler.hooks.initialize) {
+      compiler.hooks.compilation.tap(pluginName, (compilation) => {
         compilation.hooks.processAssets.tapPromise(
           {
             name: pluginName,
@@ -160,14 +155,12 @@ class FontSpiderWebpackPlugin {
           },
           (assets) => this.optimize(assets, compilation)
         )
-      } else if (compilation.hooks.afterOptimizeAssets) {
-        // Webpack 4
-        compilation.hooks.afterOptimizeAssets.tap(
-          pluginName,
-          async (assets) => await this.optimize(assets, compilation)
-        )
-      }
-    })
+      })
+    } else {
+      compiler.hooks.emit.tapPromise(pluginName, (compilation) => {
+        return this.optimize(compilation.assets, compilation)
+      })
+    }
   }
 
   /**
@@ -181,7 +174,7 @@ class FontSpiderWebpackPlugin {
     if (Object.keys(assets).length === 0) {
       return
     }
-    emptyDir(path.join(__dirname, '../tmp'))
+    emptyDir(tmpPath)
     const scripts = new Map()
     const allFontFaces: string[] = []
     Object.entries(assets).forEach(([pathname, source]) => {
@@ -189,16 +182,16 @@ class FontSpiderWebpackPlugin {
       if (pathname.endsWith('.js')) {
         scripts.set(pathname, content)
       } else if (pathname.endsWith('.css')) {
-        const result = content.toString().match(regxFace)
+        const result = content
+          .toString()
+          .replace(/[\r\n]/g, '')
+          .match(regxFace)
         if (result) {
           allFontFaces.push(...result)
         }
       } else if (regxFont.test(pathname)) {
-        const assetInfo = compilation.assetsInfo.get(pathname)
-        const filename = getFilename(assetInfo?.sourceFilename)
-        if (!filename) return
+        const filename = getFilename(pathname)
         this.manifest.set(filename, pathname)
-        this.manifest2.set(pathname, filename)
         writeTmp(filename, content)
       }
     })
@@ -214,8 +207,7 @@ class FontSpiderWebpackPlugin {
         return
       }
       value = value.replace(/url\(['|"]*(.+?)['|"]*\)/g, ($0, $1) => {
-        const hashname = getFilename($1)
-        const filename = this.manifest2.get(hashname)
+        const filename = getFilename($1)
         if (filename) {
           return `url(./${filename})`
         }
@@ -231,7 +223,7 @@ class FontSpiderWebpackPlugin {
 
     const htmls: string[] = []
     files.forEach((value, key) => {
-      const url = path.join(__dirname, `../tmp/${key}.html`)
+      const url = path.join(tmpPath, `${key}.html`)
       fs.writeFileSync(url, value)
       htmls.push(url)
     })
@@ -252,15 +244,19 @@ class FontSpiderWebpackPlugin {
    * @memberof FontSpiderWebpackPlugin
    */
   async compression(htmls: string[], compilation: Compilation) {
-    const originalFonts = await fontSpider.spider(htmls, {
-      silent: true,
-      backup: false,
-    })
+    const fontSpiderOptions = this.options.fontSpiderOptions
+    const originalFonts = await fontSpider.spider(
+      htmls,
+      fontSpiderOptions || {
+        silent: true,
+        backup: false,
+      }
+    )
     if (!originalFonts || originalFonts.length === 0) {
       throw Error('没有提取出任何引用的字体包所要渲染的字符')
     }
     console.log('字体分析提取完毕，进行压缩...')
-    const fonts = await fontSpider.compressor(originalFonts, { backup: false })
+    const fonts = await fontSpider.compressor(originalFonts, fontSpiderOptions || { backup: false })
     fonts.forEach((font: { chars: string; family: string; files: { format: string; size: number; url: string }[] }) => {
       console.log('')
       console.log(
@@ -271,15 +267,17 @@ class FontSpiderWebpackPlugin {
           chalk.green('字体')
       )
       font.files.forEach((file: { format: string; size: number; url: string }) => {
-        const filename = file.url.substring(file.url.lastIndexOf('tmp/') + 4)
+        const filename = getFilename(file.url)
         const source = new sources.RawSource(fs.readFileSync(file.url))
-        const hashname = this.manifest.get(filename)
-        compilation.updateAsset(hashname, source)
+        const pathname = this.manifest.get(filename)
+        compilation.updateAsset(pathname, source)
         console.log(
           chalk.white(`${file.format} 优化后的文件体积为 ${chalk.green(`${(file.size / 1024).toFixed(2)}KiB`)}`)
         )
       })
     })
+    console.log('')
+    console.log(chalk.green('字体压缩成功'))
   }
 }
 

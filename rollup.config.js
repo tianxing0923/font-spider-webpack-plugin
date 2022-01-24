@@ -7,9 +7,14 @@ const config = {
   input: 'src/main.ts',
   output: [
     {
-      file: 'build/main.js',
+      file: 'dist/cjs/main.js',
       format: 'cjs',
-      exports: 'auto',
+      exports: 'auto'
+    },
+    {
+      file: 'dist/es/main.js',
+      format: 'es',
+      exports: 'auto'
     },
   ],
   external: ['webpack', 'font-spider', 'schema-utils', 'fs', 'path', 'chalk', 'cheerio'],
