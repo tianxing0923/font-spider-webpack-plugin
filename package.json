@@ -1,7 +1,7 @@
 {
   "name": "font-spider-webpack-plugin",
   "description": "Font-spider webpack plugin",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "main": "dist/cjs/main.js",
   "module": "dist/es/main.js",
   "types": "dist/es/main.d.ts",
